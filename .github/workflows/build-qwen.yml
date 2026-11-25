@@ -57,6 +57,33 @@ jobs:
           grep -q 'ggml_flash_attn_ext_set_prec' include/ggml.h
           echo "All four GGML API declarations are present."
 
+      - name: Pin Android NDK and fix JNI attach signature
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          gradle = Path("app/build.gradle.kts")
+          text = gradle.read_text()
+          if 'ndkVersion = "27.2.12479018"' not in text:
+              text = text.replace('    compileSdk = 36\n', '    compileSdk = 36\n    ndkVersion = "27.2.12479018"\n', 1)
+              gradle.write_text(text)
+          jni = Path("external/qwen3-tts.cpp/src/qwen3_tts_jni.cpp")
+          text = jni.read_text()
+          old = """                void* attached_env = nullptr;
+                if (state->vm->AttachCurrentThread(&attached_env, nullptr) != JNI_OK) {
+                    return;
+                }
+                env = static_cast<JNIEnv*>(attached_env);"""
+          new = """                JNIEnv* attached_env = nullptr;
+                if (state->vm->AttachCurrentThread(&attached_env, nullptr) != JNI_OK) {
+                    return;
+                }
+                env = attached_env;"""
+          if old not in text:
+              raise SystemExit("Expected JNI AttachCurrentThread block not found; refusing an unsafe patch.")
+          jni.write_text(text.replace(old, new, 1))
+          print("Pinned NDK 27.2.12479018 and corrected AttachCurrentThread JNIEnv** argument.")
+          PYCODE
+
       - name: Build ARM64 debug APK
         run: |
           chmod +x ./gradlew
