@@ -37,9 +37,13 @@ jobs:
             "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
-      - name: Fetch GGML
+      - name: Fetch compatible GGML
         run: |
-          git clone --depth 1 https://github.com/ggml-org/ggml.git external/qwen3-tts.cpp/ggml
+          mkdir -p external/qwen3-tts.cpp/ggml
+          git -C external/qwen3-tts.cpp/ggml init
+          git -C external/qwen3-tts.cpp/ggml remote add origin https://github.com/ggml-org/ggml.git
+          git -C external/qwen3-tts.cpp/ggml fetch --depth 1 origin 6df7c278a551e27d1e9ed49a73ca2bde45f996e4
+          git -C external/qwen3-tts.cpp/ggml checkout FETCH_HEAD
 
       - name: Build ARM64 APK
         run: |
