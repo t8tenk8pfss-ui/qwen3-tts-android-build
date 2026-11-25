@@ -1,0 +1,55 @@
+name: Build Qwen3 TTS Android ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Qwen3_TTS_ANDROID_ARM64_BUILD_KIT.zip'
+      - '.github/workflows/build-qwen.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract build kit
+        run: |
+          unzip -o Qwen3_TTS_ANDROID_ARM64_BUILD_KIT.zip -d .
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android tools
+        run: |
+          sdkmanager --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1"
+
+      - name: Fetch GGML
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/ggml.git external/qwen3-tts.cpp/ggml
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-tts-android-arm64
+          path: app/build/outputs/apk/debug/*.apk
