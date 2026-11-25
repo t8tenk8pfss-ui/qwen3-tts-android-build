@@ -12,7 +12,8 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -21,11 +22,11 @@ jobs:
       - name: Extract build kit
         run: unzip -o Qwen3_TTS_ANDROID_ARM64_BUILD_KIT.zip -d .
 
-      - name: Set up Java
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Install Android SDK packages
         run: |
@@ -37,18 +38,29 @@ jobs:
             "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
-      - name: Fetch compatible GGML
+      - name: Fetch pinned GGML revision
+        env:
+          GGML_COMMIT: 076861cdfcc5b37ffbbcaa392513786bce9d5b70
         run: |
-          mkdir -p external/qwen3-tts.cpp/ggml
-          git -C external/qwen3-tts.cpp/ggml init
-          git -C external/qwen3-tts.cpp/ggml remote add origin https://github.com/ggml-org/ggml.git
-          git -C external/qwen3-tts.cpp/ggml fetch --depth 1 origin 05b557197a15fe4b857b54150ce0a9e4f6aab23e
-          git -C external/qwen3-tts.cpp/ggml checkout FETCH_HEAD
+          git clone https://github.com/ggml-org/ggml.git external/qwen3-tts.cpp/ggml
+          git -C external/qwen3-tts.cpp/ggml fetch --depth 1 origin "$GGML_COMMIT"
+          git -C external/qwen3-tts.cpp/ggml checkout --detach "$GGML_COMMIT"
+          test "$(git -C external/qwen3-tts.cpp/ggml rev-parse HEAD)" = "$GGML_COMMIT"
 
-      - name: Build ARM64 APK
+      - name: Verify required GGML API before compiling
+        working-directory: external/qwen3-tts.cpp/ggml
         run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon :app:assembleDebug
+          set -eu
+          grep -q 'ggml_col2im_1d' include/ggml.h
+          grep -q 'GGML_BACKEND_DEVICE_TYPE_IGPU' include/ggml-backend.h
+          grep -q 'ggml_diag_mask_inf' include/ggml.h
+          grep -q 'ggml_flash_attn_ext_set_prec' include/ggml.h
+          echo "All four GGML API declarations are present."
+
+      - name: Build ARM64 debug APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
